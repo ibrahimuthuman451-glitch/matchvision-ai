@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
-import { Player, Ball, BroadcastGraphic } from "../types/match";
+import { Player, Ball, BroadcastGraphic, CommercialSponsor, TelestrationAnnotation } from "../types/match";
 import { pitchToBroadcastView } from "../services/matchSimulator";
-import { Radio, AlertTriangle, Glasses } from "lucide-react";
+import { Radio, AlertTriangle, Glasses, Camera, Shield, Zap } from "lucide-react";
 
 interface BroadcastCvViewProps {
   players: Player[];
@@ -13,6 +13,11 @@ interface BroadcastCvViewProps {
   showTrackingBadges: boolean;
   activeGraphic?: BroadcastGraphic | null;
   isSpectaclesMode?: boolean;
+  sponsor?: CommercialSponsor | null;
+  cameraAngle?: "main" | "spidercam" | "boxcam" | "benchcam";
+  onChangeCameraAngle?: (angle: "main" | "spidercam" | "boxcam" | "benchcam") => void;
+  isCleanFeedMode?: boolean;
+  telestrationAnnotations?: TelestrationAnnotation[];
 }
 
 export const BroadcastCvView: React.FC<BroadcastCvViewProps> = ({
@@ -25,6 +30,11 @@ export const BroadcastCvView: React.FC<BroadcastCvViewProps> = ({
   showTrackingBadges,
   activeGraphic,
   isSpectaclesMode = false,
+  sponsor = null,
+  cameraAngle = "main",
+  onChangeCameraAngle,
+  isCleanFeedMode = false,
+  telestrationAnnotations = [],
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -255,7 +265,97 @@ export const BroadcastCvView: React.FC<BroadcastCvViewProps> = ({
       ctx.fillText(`ball 0.91`, ballProj.x + bBoxR + 2, ballScreenY);
     }
     ctx.restore();
-  }, [players, ball, selectedPlayerId, showBoxes, showPitchGrid, showTrackingBadges]);
+
+    // 5. Render Projected Telestration Annotations
+    if (telestrationAnnotations && telestrationAnnotations.length > 0) {
+      ctx.save();
+      telestrationAnnotations.forEach((ann) => {
+        if (ann.type === "spotlight" && ann.points[0]) {
+          const pt = pitchToBroadcastView(ann.points[0].x, ann.points[0].y, width, height);
+          ctx.save();
+          ctx.fillStyle = `${ann.color}35`;
+          ctx.strokeStyle = ann.color;
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.ellipse(pt.x, pt.y, (ann.radius || 4.5) * pt.scale * 10, (ann.radius || 4.5) * pt.scale * 4, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          if (ann.label) {
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 11px monospace";
+            ctx.fillText(ann.label, pt.x - 25, pt.y - (ann.radius || 4.5) * pt.scale * 4 - 6);
+          }
+          ctx.restore();
+        } else if ((ann.type === "pass_arrow" || ann.type === "run_vector") && ann.points.length >= 2) {
+          const p1 = pitchToBroadcastView(ann.points[0].x, ann.points[0].y, width, height);
+          const p2 = pitchToBroadcastView(ann.points[1].x, ann.points[1].y, width, height);
+
+          ctx.save();
+          ctx.strokeStyle = ann.color;
+          ctx.lineWidth = 3.0;
+          if (ann.type === "run_vector") {
+            ctx.setLineDash([6, 4]);
+          }
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.stroke();
+
+          // Arrowhead
+          const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+          const headLen = 14;
+          ctx.fillStyle = ann.color;
+          ctx.beginPath();
+          ctx.moveTo(p2.x, p2.y);
+          ctx.lineTo(p2.x - headLen * Math.cos(angle - Math.PI / 6), p2.y - headLen * Math.sin(angle - Math.PI / 6));
+          ctx.lineTo(p2.x - headLen * Math.cos(angle + Math.PI / 6), p2.y - headLen * Math.sin(angle + Math.PI / 6));
+          ctx.closePath();
+          ctx.fill();
+
+          if (ann.label) {
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 10px monospace";
+            ctx.fillText(ann.label, (p1.x + p2.x) / 2, (p1.y + p2.y) / 2 - 8);
+          }
+          ctx.restore();
+        } else if (ann.type === "offside_plane" && ann.points[0]) {
+          const depthPitchX = ann.points[0].x;
+          const topEdge = pitchToBroadcastView(depthPitchX, -34, width, height);
+          const botEdge = pitchToBroadcastView(depthPitchX, 34, width, height);
+
+          ctx.save();
+          ctx.strokeStyle = ann.color;
+          ctx.lineWidth = 2.5;
+          ctx.setLineDash([4, 2]);
+          ctx.beginPath();
+          ctx.moveTo(topEdge.x, topEdge.y);
+          ctx.lineTo(botEdge.x, botEdge.y);
+          ctx.stroke();
+
+          ctx.fillStyle = ann.color;
+          ctx.font = "bold 11px monospace";
+          ctx.fillText(`OFFSIDE LINE (${Math.abs(depthPitchX).toFixed(1)}m)`, (topEdge.x + botEdge.x) / 2 - 40, (topEdge.y + botEdge.y) / 2);
+          ctx.restore();
+        } else if (ann.type === "cover_zone" && ann.points[0]) {
+          const pt = pitchToBroadcastView(ann.points[0].x, ann.points[0].y, width, height);
+          ctx.save();
+          ctx.fillStyle = `${ann.color}28`;
+          ctx.strokeStyle = ann.color;
+          ctx.lineWidth = 2.0;
+          ctx.strokeRect(pt.x - 40, pt.y - 25, 80, 50);
+          ctx.fillRect(pt.x - 40, pt.y - 25, 80, 50);
+          if (ann.label) {
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 10px monospace";
+            ctx.fillText(ann.label, pt.x - 35, pt.y - 30);
+          }
+          ctx.restore();
+        }
+      });
+      ctx.restore();
+    }
+  }, [players, ball, selectedPlayerId, showBoxes, showPitchGrid, showTrackingBadges, telestrationAnnotations, cameraAngle]);
 
   return (
     <div className="relative w-full aspect-[16/9] max-h-[640px] bg-slate-950 rounded-xl overflow-hidden border border-slate-800 shadow-2xl flex items-center justify-center">
@@ -265,6 +365,48 @@ export const BroadcastCvView: React.FC<BroadcastCvViewProps> = ({
         height={720}
         className="w-full h-full object-contain cursor-pointer"
       />
+
+      {/* Clean SDI Title Safe Guides if isCleanFeedMode */}
+      {isCleanFeedMode && (
+        <div className="absolute inset-8 pointer-events-none border border-dashed border-red-500/40 rounded flex flex-col justify-between p-2">
+          <div className="flex justify-between text-[9px] font-mono text-red-400 font-bold">
+            <span>SDI 1080p59.94 CLEAN BROADCAST OUTPUT</span>
+            <span>TITLE SAFE 90%</span>
+          </div>
+          <div className="flex justify-between text-[9px] font-mono text-red-400">
+            <span>MATCHVISION BROADCAST ENGINE</span>
+            <span>PROGRAM OUT</span>
+          </div>
+        </div>
+      )}
+
+      {/* Camera Angle Selector Bar */}
+      {onChangeCameraAngle && !isCleanFeedMode && (
+        <div className="absolute bottom-3 left-4 flex items-center gap-1 bg-slate-950/85 backdrop-blur px-2 py-1 rounded-lg border border-slate-800 z-30">
+          <span className="text-[10px] font-mono text-slate-400 uppercase mr-1 flex items-center gap-1">
+            <Camera className="w-3 h-3 text-cyan-400" /> CAM:
+          </span>
+          {[
+            { id: "main", label: "Main 16:9" },
+            { id: "spidercam", label: "SpiderCam 105m" },
+            { id: "boxcam", label: "18-Yard Box" },
+            { id: "benchcam", label: "Dugout / Bench" },
+          ].map((c) => (
+            <button
+              key={c.id}
+              onClick={() => onChangeCameraAngle(c.id as any)}
+              className={`px-2 py-0.5 text-[10px] rounded font-semibold transition-colors ${
+                cameraAngle === c.id
+                  ? "bg-cyan-600 text-white font-bold"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Spectacles AR Glasses Vignette & Optics Frame if in Spectacles Mode */}
       {isSpectaclesMode && (
         <div className="absolute inset-0 pointer-events-none rounded-xl border-4 border-purple-500/40 shadow-inner bg-gradient-to-b from-purple-950/15 via-transparent to-purple-950/25">
@@ -292,8 +434,33 @@ export const BroadcastCvView: React.FC<BroadcastCvViewProps> = ({
         </div>
       )}
 
+      {/* Commercial Sponsor Bug in Top Right */}
+      {sponsor && (
+        <div
+          className="absolute top-3 right-4 flex items-center gap-2 px-3 py-1.5 rounded-lg shadow-xl backdrop-blur-md border animate-in fade-in duration-300"
+          style={{
+            backgroundColor: "rgba(15, 23, 42, 0.92)",
+            borderColor: sponsor.accentColor,
+            boxShadow: `0 0 16px ${sponsor.accentColor}35`,
+          }}
+        >
+          <div
+            className="w-2 h-2 rounded-full animate-pulse"
+            style={{ backgroundColor: sponsor.accentColor }}
+          />
+          <div>
+            <div className="text-[10px] font-mono font-black uppercase tracking-wider text-white flex items-center gap-1.5">
+              <span>{sponsor.badgeText}</span>
+            </div>
+            <div className="text-[8px] font-mono text-slate-300">
+              {sponsor.tagline}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Broadcast Feed Telemetry Badge */}
-      {!isSpectaclesMode && (
+      {!isSpectaclesMode && !isCleanFeedMode && (
         <div className="absolute top-3 left-4 flex items-center gap-3 bg-slate-900/90 backdrop-blur px-3 py-1.5 rounded-lg border border-slate-700/60 shadow-lg">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
@@ -308,8 +475,8 @@ export const BroadcastCvView: React.FC<BroadcastCvViewProps> = ({
         </div>
       )}
 
-      {/* ON AIR Indicator Badge in Top-Right */}
-      {activeGraphic && activeGraphic.isOnAir && (
+      {/* ON AIR Indicator Badge */}
+      {activeGraphic && activeGraphic.isOnAir && !sponsor && (
         <div className="absolute top-3 right-4 flex items-center gap-2 bg-red-600/90 backdrop-blur px-3 py-1 rounded-md text-white font-mono text-xs font-extrabold shadow-lg animate-pulse">
           <Radio className="w-3.5 h-3.5" />
           ON AIR GRAPHIC
