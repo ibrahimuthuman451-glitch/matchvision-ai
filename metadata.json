@@ -1,0 +1,7 @@
+{
+  "name": "MatchVision AI — Real-Time Football Intelligence Engine",
+  "description": "Next-generation computer-vision and tactical football intelligence engine with persistent player tracking, pitch homography calibration, automated match event detection, and live 2D tactical visualization.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

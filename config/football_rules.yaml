@@ -1,0 +1,71 @@
+# MATCHVISION AI — FOOTBALL RULES & ENGINE CONFIGURATION
+# Standard FIFA Pitch Dimensions & Analytics Calibration
+
+pitch:
+  length_meters: 105.0
+  width_meters: 68.0
+  penalty_box_length: 16.5
+  penalty_box_width: 40.32
+  goal_box_length: 5.5
+  goal_box_width: 18.32
+  center_circle_radius: 9.15
+  penalty_spot_distance: 11.0
+  goal_width: 7.32
+  corner_arc_radius: 1.0
+
+detection:
+  model_name: "yolov8m.pt"
+  confidence_threshold: 0.35
+  nms_iou_threshold: 0.50
+  ball_confidence_threshold: 0.20
+  classes:
+    player: 0
+    goalkeeper: 1
+    referee: 2
+    ball: 3
+  filter_spectators_outside_pitch: true
+  min_box_area_ratio: 0.0002
+  max_box_area_ratio: 0.15
+
+tracking:
+  algorithm: "bytetrack"
+  track_high_thresh: 0.60
+  track_low_thresh: 0.15
+  match_thresh: 0.80
+  track_buffer_frames: 45
+  appearance_metric: "cosine"
+  appearance_weight: 0.35
+  spatial_weight: 0.65
+  max_occlusion_frames: 30
+  min_hits_to_confirm: 3
+
+team_identification:
+  method: "kmeans_lab"
+  clusters: 2
+  color_sampling_region: "torso" # upper 30%-60% of bounding box
+  referee_color_override: [240, 230, 40] # Vibrant yellow / neon
+  shadow_compensation: true
+  smoothing_alpha: 0.85
+
+calibration:
+  min_landmarks_for_homography: 4
+  ransac_reproj_threshold: 3.5
+  temporal_smoothing: true
+  smoothing_factor: 0.75
+  origin: "center" # (0,0) at center circle; x: [-52.5, 52.5], y: [-34, 34]
+
+ball_and_possession:
+  possession_proximity_meters: 2.2
+  possession_confirmation_frames: 3
+  ball_max_speed_mps: 45.0 # ~160 km/h
+  trajectory_kalman_process_noise: 0.05
+  pass_velocity_threshold_mps: 5.0
+  shot_velocity_threshold_mps: 18.0
+
+tactics:
+  defensive_line_percentile: 0.15
+  compactness_convex_hull: true
+  sprint_speed_kmh: 25.2 # FIFA sprint standard
+  high_intensity_speed_kmh: 19.8
+  pitch_control_decay_lambda: 4.3
+  xg_model: "calibrated_logistic"
