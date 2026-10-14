@@ -84,10 +84,6 @@ class PitchCalibrator:
             self.degraded_mode = True
             self.calibration_quality = 0.0
             return False
-
-        pts_img = np.array(image_points, dtype=np.float32).reshape(-1, 1, 2)
-        pts_pitch = np.array(pitch_points, dtype=np.float32).reshape(-1, 1, 2)
-
         try:
             import cv2
             if np is not None:

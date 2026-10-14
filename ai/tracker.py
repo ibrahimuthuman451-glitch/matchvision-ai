@@ -144,7 +144,7 @@ class PersistentPlayerTracker:
         self.lost_players: List[TrackedPlayer] = []
         self.frame_count = 0
 
-    def update(self, detections: List, frame: Optional[np.ndarray] = None) -> List[TrackedPlayer]:
+    def update(self, detections: List, frame: Optional[Any] = None) -> List[TrackedPlayer]:
         """Updates tracker state with new frame detections.
 
         Args:

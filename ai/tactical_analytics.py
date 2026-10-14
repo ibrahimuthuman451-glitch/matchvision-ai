@@ -98,7 +98,7 @@ class TacticalAnalyticsEngine:
                 last_x, last_y = self.player_last_pos[tid]
                 dx = pos[0] - last_x
                 dy = pos[1] - last_y
-                step_dist = np.sqrt(dx * dx + dy * dy)
+                step_dist = math.sqrt(dx * dx + dy * dy)
 
                 # Filter abnormal teleportation artifacts (> 12 m/s or 43 km/h physical limit)
                 if step_dist < 12.0 * dt:
