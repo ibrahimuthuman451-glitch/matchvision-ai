@@ -103,14 +103,14 @@ export const BroadcastControlRoom: React.FC<BroadcastControlRoomProps> = ({
       role: "assistant",
       content:
         "Broadcast Control Room active. You are controlling the Spectacles TV screen and Television broadcast graphics. Type any headline, player stat, or tactical instruction, or ask me to draft broadcast copy.",
-      model: "gemini-4-argon",
+      model: "gemini-2.5-pro",
     },
   ]);
   const [chatInput, setChatInput] = useState("");
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState<
-    "gemini-4-argon" | "gemini-3.8-flash" | "gemini-3.1-flash-lite"
-  >("gemini-4-argon");
+    "gemini-2.5-pro" | "gemini-2.5-flash" | "gemini-2.5-flash-lite"
+  >("gemini-2.5-pro");
   const [directorRole, setDirectorRole] = useState<
     "director_copilot" | "graphics_producer" | "tactical_commentator"
   >("director_copilot");
@@ -188,7 +188,7 @@ export const BroadcastControlRoom: React.FC<BroadcastControlRoomProps> = ({
         content: m.content,
       }));
 
-      const res = await fetch("/api/broadcast-chat", {
+      const res = await fetch("/api/ai/broadcast-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -875,9 +875,9 @@ export const BroadcastControlRoom: React.FC<BroadcastControlRoomProps> = ({
           <span className="text-slate-400 font-mono text-[10px] uppercase">AI Model:</span>
           <div className="flex items-center gap-1">
             {[
-              { id: "gemini-4-argon", label: "4-Argon (Thinking Mode HIGH)" },
-              { id: "gemini-3.8-flash", label: "3.8 Flash (General)" },
-              { id: "gemini-3.1-flash-lite", label: "3.1 Lite (Fast Ticker)" },
+              { id: "gemini-2.5-pro", label: "Pro (Deep Reasoning)" },
+              { id: "gemini-2.5-flash", label: "Flash (General)" },
+              { id: "gemini-2.5-flash-lite", label: "Lite (Fast Ticker)" },
             ].map((m) => (
               <button
                 key={m.id}

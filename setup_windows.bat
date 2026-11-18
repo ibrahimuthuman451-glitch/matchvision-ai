@@ -26,8 +26,18 @@ pip install -r requirements.txt
 echo [*] Running automated verification test suite...
 python main.py --mode test
 
+echo [*] Installing web platform dependencies (Node.js 24+ required)...
+where node >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [WARN] Node.js was not found. Install Node 24+ to run the web workspace.
+) else (
+    call npm ci
+    call npm run build
+)
+
 echo ==============================================================
 echo Setup Complete! You can now run:
-echo   powershell -ExecutionPolicy Bypass -File .\run_matchvision.ps1
+echo   npm run dev            ^(web workspace on http://localhost:3000^)
+echo   powershell -ExecutionPolicy Bypass -File .\run_matchvision.ps1 -Mode demo
 echo ==============================================================
 pause

@@ -249,24 +249,37 @@ export const TacticalPitch: React.FC<TacticalPitchProps> = ({
   const [alertFilter, setAlertFilter] = useState<"all" | TacticalAlertCategory>("all");
 
   // Real-time tactical detection effect across simulation updates
+  const lastAlertCheckRef = useRef(0);
+  const recentAlertKeysRef = useRef<Map<string, number>>(new Map());
+
   useEffect(() => {
     if (!isAlertsEnabled) return;
 
-    const detected = detectLiveTacticalEvents(players, ball, matchTimeSec);
-    if (detected.length > 0) {
-      detected.forEach((newAlert) => {
-        if (isSoundEnabled) {
-          tacticalAlertAudio.playAlertChime(newAlert.category);
-        }
-        setActiveAlerts((prev) => [newAlert, ...prev.slice(0, 2)]);
-        setAlertHistory((prev) => [newAlert, ...prev]);
+    // Replay can push positions at 10 Hz; detection must not run on every tick
+    const now = Date.now();
+    if (now - lastAlertCheckRef.current < 700) return;
+    lastAlertCheckRef.current = now;
 
-        // Auto-dismiss alert banner from active HUD after duration
-        setTimeout(() => {
-          setActiveAlerts((prev) => prev.filter((a) => a.id !== newAlert.id));
-        }, newAlert.durationMs);
-      });
-    }
+    const detected = detectLiveTacticalEvents(players, ball, matchTimeSec);
+    const fresh = detected.filter((candidate) => {
+      const key = `${candidate.category}:${candidate.title}`;
+      const seenAt = recentAlertKeysRef.current.get(key) ?? 0;
+      return now - seenAt > 8000;
+    });
+
+    fresh.forEach((newAlert) => {
+      recentAlertKeysRef.current.set(`${newAlert.category}:${newAlert.title}`, now);
+      if (isSoundEnabled) {
+        tacticalAlertAudio.playAlertChime(newAlert.category);
+      }
+      setActiveAlerts((prev) => [newAlert, ...prev.slice(0, 2)]);
+      setAlertHistory((prev) => [newAlert, ...prev]);
+
+      // Auto-dismiss alert banner from active HUD after duration
+      setTimeout(() => {
+        setActiveAlerts((prev) => prev.filter((a) => a.id !== newAlert.id));
+      }, newAlert.durationMs);
+    });
   }, [players, ball, matchTimeSec, isAlertsEnabled, isSoundEnabled]);
 
   const handleTriggerScenario = useCallback((category: TacticalAlertCategory) => {
@@ -427,21 +440,18 @@ export const TacticalPitch: React.FC<TacticalPitchProps> = ({
   const shouldRenderSetPiece =
     overlays.setPiece !== false && (isSetPieceMode || setPieceAnalysis.isSetPieceScenario);
 
-  // Main canvas render effect
+  // Formation tracking must not share an effect with canvas painting: state updates
+  // here would re-trigger the render effect on every replay tick.
   useEffect(() => {
-    // 1. Record player coordinates in 10-second rolling buffer
     formationDetector.recordPositions(players);
-
-    // 2. Compute 10-second average positions
     const avgs = formationDetector.getAveragePositions(players);
     setAveragePositions(avgs);
+    setTeam0Formation(formationDetector.analyzeFormation(0, players, avgs));
+    setTeam1Formation(formationDetector.analyzeFormation(1, players, avgs));
+  }, [players]);
 
-    // 3. Analyze formations over the 10-second window
-    const f0 = formationDetector.analyzeFormation(0, players, avgs);
-    const f1 = formationDetector.analyzeFormation(1, players, avgs);
-    setTeam0Formation(f0);
-    setTeam1Formation(f1);
-
+  // Main canvas render effect
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -462,7 +472,7 @@ export const TacticalPitch: React.FC<TacticalPitchProps> = ({
 
       // Clear canvas with deep dark grass backdrop
       ctx.clearRect(0, 0, width, height);
-      ctx.fillStyle = "#0a1f12";
+      ctx.fillStyle = "#0a1team1Formation2";
       ctx.fillRect(0, 0, width, height);
 
       ctx.save();
@@ -653,7 +663,7 @@ export const TacticalPitch: React.FC<TacticalPitchProps> = ({
             ctx.arc(cx, cy, 4, 0, Math.PI * 2);
             ctx.stroke();
 
-            const formation = tId === 0 ? f0 : f1;
+            const formation = tId === 0 ? team0Formation : team1Formation;
             if (formation) {
               const badgeText = `${formation.teamName.toUpperCase()} · ${formation.formationLabel} (${formation.tacticalPhase.toUpperCase()})`;
               ctx.font = "bold 9px monospace";
@@ -774,14 +784,14 @@ export const TacticalPitch: React.FC<TacticalPitchProps> = ({
       // 8B. 10s Average Anchors
       if (show10sAverageAnchors) {
         ctx.save();
-        [f0, f1].forEach((formation) => {
+        [team0Formation, team1Formation].forEach((formation) => {
           if (!formation) return;
           const isTeam0 = formation.teamId === 0;
           const themeColor = isTeam0 ? "rgba(239, 68, 68, 0.45)" : "rgba(56, 189, 248, 0.45)";
 
           formation.lines.forEach((line) => {
             const linePlayers = line.playerIds
-              .map((id) => avgs.get(id))
+              .map((id) => averagePositions.get(id))
               .filter((a): a is PlayerAveragePos => Boolean(a));
 
             if (linePlayers.length > 1) {
@@ -805,7 +815,7 @@ export const TacticalPitch: React.FC<TacticalPitchProps> = ({
 
         players.forEach((p) => {
           if (p.teamId === 2) return;
-          const avg = avgs.get(p.id);
+          const avg = averagePositions.get(p.id);
           if (!avg) return;
 
           const currSX = toScreenX(p.x);
@@ -881,7 +891,7 @@ export const TacticalPitch: React.FC<TacticalPitchProps> = ({
           ctx.strokeStyle = "#ffffff";
         } else if (p.teamId === 1) {
           ctx.fillStyle = p.role === "GK" ? "#ea580c" : "#38bdf8";
-          ctx.strokeStyle = "#0f172a";
+          ctx.strokeStyle = "#0team1Formation72a";
         } else {
           ctx.fillStyle = "#eab308";
           ctx.strokeStyle = "#000000";
@@ -891,7 +901,7 @@ export const TacticalPitch: React.FC<TacticalPitchProps> = ({
         ctx.fill();
         ctx.stroke();
 
-        ctx.fillStyle = p.teamId === 1 && p.role !== "GK" ? "#0f172a" : "#ffffff";
+        ctx.fillStyle = p.teamId === 1 && p.role !== "GK" ? "#0team1Formation72a" : "#ffffff";
         ctx.font = `bold ${isSelected ? "10px" : "8px"} sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
@@ -2297,6 +2307,9 @@ export const TacticalPitch: React.FC<TacticalPitchProps> = ({
     };
   }, [
     players,
+    averagePositions,
+    team0Formation,
+    team1Formation,
     ball,
     selectedPlayerId,
     overlays,

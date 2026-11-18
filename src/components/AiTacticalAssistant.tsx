@@ -54,7 +54,7 @@ export const AiTacticalAssistant: React.FC<AiTacticalAssistantProps> = ({ stats,
       role: "assistant",
       content:
         "Welcome to MatchVision Tactical AI. I am continuously monitoring kinematic fatigue, distance telemetry, and tactical spacing.\n\n⚡ **Active Match Status (68:20)**: High physical fatigue detected on Saka (82%), Partey (84%), and Gündoğan (84%). You can explore the **Fatigue & High-Impact Subs** radar tab or ask tactical questions below.",
-      model: "gemini-4-argon (Thinking Level: HIGH)",
+      model: "gemini-2.5-pro (Thinking Level: HIGH)",
     },
   ]);
   const [input, setInput] = useState("");
@@ -149,7 +149,7 @@ export const AiTacticalAssistant: React.FC<AiTacticalAssistantProps> = ({ stats,
         },
       };
 
-      const res = await fetch("/api/tactical-query", {
+      const res = await fetch("/api/ai/tactical-query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -162,7 +162,7 @@ export const AiTacticalAssistant: React.FC<AiTacticalAssistantProps> = ({ stats,
       const assistantMsg: Message = {
         role: "assistant",
         content: data.answer || "No response received.",
-        model: `${data.model || "gemini-4-argon"} (Thinking Level: HIGH)`,
+        model: `${data.model || "gemini-2.5-pro"} (Thinking Level: HIGH)`,
       };
       setMessages((prev) => [...prev, assistantMsg]);
     } catch (err: any) {
@@ -232,7 +232,7 @@ export const AiTacticalAssistant: React.FC<AiTacticalAssistantProps> = ({ stats,
             <div className="flex items-center gap-2 mt-0.5">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-[10px] font-mono text-indigo-300">
-                gemini-4-argon · Real-Time Kinematics & Spatial Reasoning
+                gemini-2.5-pro · Real-Time Kinematics & Spatial Reasoning
               </span>
             </div>
           </div>

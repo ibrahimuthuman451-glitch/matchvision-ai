@@ -33,15 +33,31 @@ class MatchVisionPipeline:
         self,
         config_path: str = "config/football_rules.yaml",
         model_path: str = "yolov8m.pt",
-        device: str = "auto"
+        device: str = "auto",
+        detector=None
     ):
-        self.detector = FootballDetector(model_path=model_path, device=device)
+        # Allow callers (demo mode, tests) to inject a detector implementation
+        self.detector = detector if detector is not None else FootballDetector(
+            model_path=model_path, device=device
+        )
         self.tracker = PersistentPlayerTracker()
         self.team_identifier = TeamIdentifier()
         self.calibrator = PitchCalibrator()
         self.ball_tracker = BallTracker()
         self.event_detector = FootballEventDetector()
         self.analytics = TacticalAnalyticsEngine()
+
+        # Bounded buffer of torso crops used to calibrate the two team kit colours
+        self._team_calibration_crops: List = []
+        self.team_calibration_min_crops = 16
+
+        # Confirmed match events, exposed for artefact export
+        self.events: List = []
+
+        # Sparse replay timeline (tracked pitch positions sampled at ~4 Hz)
+        self.timeline: List[Dict] = []
+        self.timeline_hz = 4.0
+        self.timeline_stride = 1
 
         # Telemetry metrics
         self.total_frames_processed = 0
@@ -71,6 +87,9 @@ class MatchVisionPipeline:
         if not os.path.exists(input_video_path):
             raise FileNotFoundError(f"Input video file not found: {input_video_path}")
 
+        # A pipeline instance can process several matches; never leak state between runs
+        self._reset_match_state()
+
         cap = cv2.VideoCapture(input_video_path)
         if not cap.isOpened():
             raise RuntimeError(f"Failed to open video source: {input_video_path}")
@@ -79,6 +98,12 @@ class MatchVisionPipeline:
         src_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         src_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
         total_src_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        # Keep every kinematic/event model on the real source frame rate
+        self.ball_tracker.fps = float(src_fps)
+        self.event_detector.fps = float(src_fps)
+        self.analytics.fps = float(src_fps)
+        self.timeline_stride = max(1, int(round(float(src_fps) / self.timeline_hz)))
 
         # Setup standard homography view for source resolution
         self.calibrator.set_default_tactical_homography(src_w, src_h)
@@ -116,12 +141,13 @@ class MatchVisionPipeline:
                 tracked_players = self.tracker.update(detections, frame)
 
                 # Step 3: Classify teams and project pitch coordinates
+                self._calibrate_team_colors(tracked_players)
                 for p in tracked_players:
                     # Ground contact feet point projected via homography
                     pitch_pt = self.calibrator.image_to_pitch(p.foot_point)
                     p.pitch_coords = pitch_pt
 
-                    # Team classification
+                    # Team classification from the torso crop retained by the tracker
                     is_ref = (p.class_id == 2)
                     team_id, team_label = self.team_identifier.classify_player(
                         p.appearance_embedding, p.track_id, is_ref
@@ -135,9 +161,16 @@ class MatchVisionPipeline:
                 # Step 5: Technical and tactical event detection
                 new_events = self.event_detector.update(ball_state, tracked_players, frame_idx)
                 all_detected_events.extend(new_events)
+                self.events.extend(new_events)
 
                 # Step 6: Kinematics & spatial metrics
                 self.analytics.update_player_kinematics(tracked_players)
+                if ball_state.possession_team_id in (0, 1):
+                    self.analytics.possession_frames[ball_state.possession_team_id] += 1
+
+                # Step 6b: Record a sparse, real replay timeline for the web studio
+                if frame_idx % self.timeline_stride == 0:
+                    self._record_timeline_sample(frame_idx, float(src_fps), ball_state, tracked_players)
 
                 # Step 7: Render broadcast diagnostic overlays onto frame
                 annotated_frame = self._render_overlays(frame, tracked_players, ball_state, frame_idx, src_fps)
@@ -171,8 +204,71 @@ class MatchVisionPipeline:
             "avg_latency_ms": self.avg_latency_ms,
             "unique_players_tracked": self.tracker.next_id - 1,
             "total_events_detected": len(all_detected_events),
+            "timeline_samples": len(self.timeline),
             "calibration_status": "Calibrated" if self.calibrator.is_calibrated else "Degraded"
         }
+
+    def _reset_match_state(self) -> None:
+        """Clears per-match state so one instance can process multiple matches."""
+        self.tracker = PersistentPlayerTracker()
+        self.team_identifier = TeamIdentifier()
+        self.ball_tracker = BallTracker()
+        self.event_detector = FootballEventDetector()
+        self.analytics = TacticalAnalyticsEngine()
+        self._team_calibration_crops = []
+        self.events = []
+        self.timeline = []
+
+    def _record_timeline_sample(self, frame_idx: int, fps: float, ball_state, tracked_players: List) -> None:
+        """Stores tracked pitch positions for replay (compact keys keep the artefact small)."""
+        players: Dict[str, List[float]] = {}
+        for p in tracked_players:
+            coords = getattr(p, "pitch_coords", None)
+            if coords is not None:
+                players[str(p.track_id)] = [round(float(coords[0]), 2), round(float(coords[1]), 2)]
+
+        ball = None
+        if getattr(ball_state, "pitch_coords", None) is not None:
+            ball = [
+                round(float(ball_state.pitch_coords[0]), 2),
+                round(float(ball_state.pitch_coords[1]), 2),
+            ]
+
+        self.timeline.append(
+            {
+                "t": round(frame_idx / fps, 2),
+                "b": ball,
+                "p": players,
+            }
+        )
+
+    def export_match_payload(self, results: Dict) -> Dict:
+        """Builds the versioned match artefact consumed by the web workspace."""
+        from pipeline.export import build_match_payload
+
+        return build_match_payload(self, results)
+
+    def _calibrate_team_colors(self, tracked_players: List) -> None:
+        """Collects torso crops until both team kit colours can be K-Means calibrated.
+
+        TeamIdentifier.fit_teams() needs a pool of jersey samples; without this step the
+        classifier stays on its single-sample heuristic for the whole match.
+        """
+        if self.team_identifier.team_centers is not None:
+            return
+
+        for p in tracked_players:
+            crop = getattr(p, "appearance_embedding", None)
+            if crop is not None and getattr(crop, "size", 0) > 0:
+                self._team_calibration_crops.append(crop)
+
+        # Keep the pool bounded so memory stays flat on long feeds
+        if len(self._team_calibration_crops) > 4 * self.team_calibration_min_crops:
+            self._team_calibration_crops = self._team_calibration_crops[-self.team_calibration_min_crops:]
+
+        if len(self._team_calibration_crops) >= self.team_calibration_min_crops:
+            self.team_identifier.fit_teams(self._team_calibration_crops)
+            self._team_calibration_crops = []
 
     def _render_overlays(
         self,

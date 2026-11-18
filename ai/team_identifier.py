@@ -84,11 +84,37 @@ class TeamIdentifier:
             kmeans.fit(np.array(colors))
             self.team_centers = kmeans.cluster_centers_
         except Exception:
-            # Fallback distance split
-            arr = np.array(colors)
-            min_c = np.min(arr, axis=0)
-            max_c = np.max(arr, axis=0)
-            self.team_centers = np.array([min_c, max_c], dtype=np.float32)
+            # Dependency-free deterministic 2-means so team calibration degrades
+            # gracefully when scikit-learn is unavailable.
+            self.team_centers = self._two_means(colors)
+
+    @staticmethod
+    def _two_means(colors: List[Any], iterations: int = 12) -> Any:
+        """Minimal deterministic 2-means clustering used as a scikit-learn fallback."""
+        arr = np.asarray(colors, dtype=np.float32)
+        if len(arr) < 2:
+            return arr
+
+        # Seed with the two most distant jersey samples
+        pairwise = np.linalg.norm(arr[:, None, :] - arr[None, :, :], axis=2)
+        first, second = np.unravel_index(int(np.argmax(pairwise)), pairwise.shape)
+        centers = arr[[first, second]].copy()
+        if float(pairwise[first, second]) <= 1e-6:
+            return centers
+
+        for _ in range(iterations):
+            dists = np.linalg.norm(arr[:, None, :] - centers[None, :, :], axis=2)
+            labels = np.argmin(dists, axis=1)
+            new_centers = centers.copy()
+            for k in range(2):
+                members = arr[labels == k]
+                if len(members) > 0:
+                    new_centers[k] = members.mean(axis=0)
+            if np.allclose(new_centers, centers):
+                centers = new_centers
+                break
+            centers = new_centers
+        return centers
 
     def classify_player(
         self,

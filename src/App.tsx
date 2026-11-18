@@ -18,6 +18,12 @@ import {
   CommercialSponsor,
 } from "./types/match";
 import { TacticalPitch } from "./components/TacticalPitch";
+import { Link } from "./lib/router";
+import {
+  sampleArtefact,
+  formatClock,
+  type LoadedArtefact,
+} from "./services/artefactAdapter";
 import { BroadcastCvView } from "./components/BroadcastCvView";
 import { EventTimeline } from "./components/EventTimeline";
 import { PlayerInspector } from "./components/PlayerInspector";
@@ -37,13 +43,8 @@ import { CoachDashboard } from "./components/CoachDashboard";
 import { PlayerDashboard } from "./components/PlayerDashboard";
 import { FanDashboard } from "./components/FanDashboard";
 import { AdminDashboard } from "./components/AdminDashboard";
-import { UserLoginModal } from "./components/UserLoginModal";
-import {
-  UserProfile,
-  INITIAL_USERS,
-  CoachDirective,
-  FanPoll,
-} from "./types/match";
+import { CoachDirective, FanPoll, UserProfile } from "./types/match";
+import type { SessionUser } from "./lib/api";
 
 import {
   Play,
@@ -74,16 +75,25 @@ import {
   Search,
 } from "lucide-react";
 
-export default function App() {
-  const [players, setPlayers] = useState<Player[]>(INITIAL_PLAYERS);
-  const [ball, setBall] = useState<Ball>(INITIAL_BALL);
-  const [events, setEvents] = useState<MatchEvent[]>(SAMPLE_EVENTS);
-  const [stats, setStats] = useState<TeamStats[]>(INITIAL_TEAM_STATS);
+export default function App({
+  user,
+  artefact = null,
+}: {
+  user: SessionUser;
+  artefact?: LoadedArtefact | null;
+}) {
+  const [mode, setMode] = useState<"demo" | "artefact">(artefact ? "artefact" : "demo");
+  const [players, setPlayers] = useState<Player[]>(() => (artefact ? artefact.basePlayers : INITIAL_PLAYERS));
+  const [ball, setBall] = useState<Ball>(() => (artefact ? artefact.baseBall : INITIAL_BALL));
+  const [events, setEvents] = useState<MatchEvent[]>(() => (artefact ? artefact.events : SAMPLE_EVENTS));
+  const [stats, setStats] = useState<TeamStats[]>(() => (artefact ? artefact.stats : INITIAL_TEAM_STATS));
 
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
-  const [currentSec, setCurrentSec] = useState<number>(4100); // 68:20 in seconds
-  const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(8); // Odegaard default
+  const [currentSec, setCurrentSec] = useState<number>(() => (artefact ? 0 : 4100)); // 68:20 in demo
+  const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(
+    () => (artefact?.basePlayers[0] ? artefact.basePlayers[0].id : 8)
+  );
 
   // Active On-Screen Graphic displayed on Spectacles / TV
   const [activeGraphic, setActiveGraphic] = useState<BroadcastGraphic | null>({
@@ -99,15 +109,40 @@ export default function App() {
     author: "Director Console",
   });
 
-  const [viewMode, setViewMode] = useState<ViewMode>("split");
+  const [viewMode, setViewMode] = useState<ViewMode>(() => (artefact ? "tactical" : "split"));
   const [activeTab, setActiveTab] = useState<
     "broadcast" | "coach" | "player" | "fan" | "admin" | "match" | "agent_hub" | "ai" | "code" | "post_match"
-  >("broadcast");
+  >(() => (artefact ? "match" : "broadcast"));
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
 
-  // Authenticated User & Multi-Role State
-  const [currentUser, setCurrentUser] = useState<UserProfile>(INITIAL_USERS[0]); // Default to Coach Arteta
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
+  // Authenticated workspace member (server session)
+  const currentUser: UserProfile = {
+    id: user.id,
+    name: user.name,
+    role:
+      user.role === "coach"
+        ? "coach"
+        : user.role === "broadcaster"
+        ? "broadcast"
+        : user.role === "admin"
+        ? "admin"
+        : "analyst",
+    title: `${user.role} · ${user.orgName}`,
+    avatarColor:
+      user.role === "coach" ? "#ef4444" : user.role === "broadcaster" ? "#38bdf8" : user.role === "admin" ? "#10b981" : "#8b5cf6",
+    badge: user.role.toUpperCase(),
+    email: user.email,
+    accessLevel: user.isAdmin ? "SuperAdmin" : "Analyst",
+    preferredDashboard:
+      user.role === "coach" ? "coach" : user.role === "broadcaster" ? "broadcast" : "analyst",
+  };
+  const isWorkspaceAdmin = user.isAdmin;
+
+  useEffect(() => {
+    if (!isWorkspaceAdmin && (activeTab === "admin" || activeTab === "code")) {
+      setActiveTab("broadcast");
+    }
+  }, [activeTab, isWorkspaceAdmin]);
 
   // Coaching Directives State (synchronized between Coach & Player)
   const [directives, setDirectives] = useState<CoachDirective[]>([
@@ -244,9 +279,9 @@ export default function App() {
     setOverlays((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // Main 60 FPS kinematic simulation loop
+  // Main 60 FPS kinematic simulation loop (demo dataset only)
   useEffect(() => {
-    if (!isPlaying) return;
+    if (!isPlaying || mode === "artefact") return;
 
     const interval = setInterval(() => {
       setCurrentSec((prev) => prev + 0.1 * playbackSpeed);
@@ -296,7 +331,63 @@ export default function App() {
     }, 100);
 
     return () => clearInterval(interval);
-  }, [isPlaying, playbackSpeed]);
+  }, [isPlaying, playbackSpeed, mode]);
+
+  // ---- Artefact replay: real tracked positions sampled from the match timeline ----
+  const replayDuration = mode === "artefact" && artefact ? artefact.durationSec : 5400;
+
+  // Switching mode swaps the whole dataset rather than recycling stale positions
+  useEffect(() => {
+    if (!artefact) return;
+    if (mode === "artefact") {
+      setPlayers(artefact.basePlayers);
+      setBall(artefact.baseBall);
+      setEvents(artefact.events);
+      setStats(artefact.stats);
+      setCurrentSec(0);
+      setSelectedPlayerId(artefact.basePlayers[0]?.id ?? null);
+    } else {
+      setPlayers(INITIAL_PLAYERS);
+      setBall(INITIAL_BALL);
+      setEvents(SAMPLE_EVENTS);
+      setStats(INITIAL_TEAM_STATS);
+      setCurrentSec(4100);
+      setSelectedPlayerId(8);
+    }
+    // Only react to a mode switch, not to every clock tick
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, artefact]);
+
+  // Advance the replay clock
+  useEffect(() => {
+    if (mode !== "artefact" || !artefact || !artefact.hasTimeline || !isPlaying) return;
+    const interval = setInterval(() => {
+      setCurrentSec((prev) => Math.min(artefact.durationSec, prev + 0.1 * playbackSpeed));
+    }, 100);
+    return () => clearInterval(interval);
+  }, [mode, artefact, isPlaying, playbackSpeed]);
+
+  // Stop at the end of the timeline
+  useEffect(() => {
+    if (mode === "artefact" && artefact && currentSec >= artefact.durationSec - 0.05 && isPlaying) {
+      setIsPlaying(false);
+    }
+  }, [mode, artefact, currentSec, isPlaying]);
+
+  // Reconstruct the tracked snapshot for the current replay time
+  useEffect(() => {
+    if (mode !== "artefact" || !artefact || !artefact.hasTimeline) return;
+    const sampled = sampleArtefact(artefact, currentSec);
+    setPlayers(sampled.players);
+    setBall(sampled.ball);
+  }, [mode, artefact, currentSec]);
+
+  const activateArtefactMode = () => {
+    if (!artefact) return;
+    setMode("artefact");
+    setActiveTab("match");
+    if (viewMode === "broadcast" || viewMode === "spectacles") setViewMode("tactical");
+  };
 
   const selectedPlayer = players.find((p) => p.id === selectedPlayerId) || null;
 
@@ -306,6 +397,18 @@ export default function App() {
     const s = Math.floor(secs % 60);
     return `${m}:${s < 10 ? "0" : ""}${s}`;
   };
+
+  // Mode-aware header labels (demo fixture vs uploaded artefact)
+  const isArtefactMode = mode === "artefact" && artefact !== null;
+  const homeLabel = isArtefactMode
+    ? (artefact!.meta.homeTeam || artefact!.stats[0]?.teamName || "Team A").toUpperCase()
+    : "ARSENAL";
+  const awayLabel = isArtefactMode
+    ? (artefact!.meta.awayTeam || artefact!.stats[1]?.teamName || "Team B").toUpperCase()
+    : "MAN CITY";
+  const clockLabel = isArtefactMode ? formatClock(currentSec) : formatTime(currentSec);
+  const phaseLabel = isArtefactMode ? "REPLAY" : "2ND HALF";
+  const canReplay = isArtefactMode && Boolean(artefact?.hasTimeline);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none">
@@ -323,6 +426,21 @@ export default function App() {
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800/60 font-semibold">
                 v2.4 PRO
               </span>
+              {isArtefactMode ? (
+                <span
+                  className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-400/30 font-semibold"
+                  title="Replaying tracked positions from the uploaded match artefact"
+                >
+                  ARTEFACT · {artefact?.calibration || "REPLAY"}
+                </span>
+              ) : (
+                <span
+                  className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 font-semibold"
+                  title="The studio runs on a bundled sample match. Upload real pipeline artefacts in the match library."
+                >
+                  DEMO DATASET
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-slate-400">
               Real-Time Football Computer Vision & Spatial Intelligence Engine
@@ -330,24 +448,24 @@ export default function App() {
           </div>
         </div>
 
-        {/* Live Match Scoreboard */}
+        {/* Live Match Header */}
         <div className="hidden lg:flex items-center gap-5 bg-slate-950/80 px-4 py-1.5 rounded-xl border border-slate-800">
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-full bg-red-600" />
-            <span className="text-xs font-bold text-slate-200">ARSENAL</span>
-            <span className="text-sm font-extrabold font-mono text-white">1</span>
+            <span className="text-xs font-bold text-slate-200">{homeLabel}</span>
+            <span className="text-sm font-extrabold font-mono text-white">{isArtefactMode ? "–" : "1"}</span>
           </div>
           <div className="text-[11px] font-mono text-amber-400 font-bold bg-amber-400/10 px-2 py-0.5 rounded">
-            {formatTime(currentSec)} (2ND HALF)
+            {clockLabel} ({phaseLabel})
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm font-extrabold font-mono text-white">1</span>
-            <span className="text-xs font-bold text-slate-200">MAN CITY</span>
+            <span className="text-sm font-extrabold font-mono text-white">{isArtefactMode ? "–" : "1"}</span>
+            <span className="text-xs font-bold text-slate-200">{awayLabel}</span>
             <span className="w-3 h-3 rounded-full bg-sky-400" />
           </div>
         </div>
 
-        {/* User Login & Role Authenticated Profile Button */}
+        {/* Authenticated workspace member */}
         <div className="flex items-center gap-3">
           {/* Quick Auto-Search Player History Button */}
           <button
@@ -359,10 +477,9 @@ export default function App() {
             <span>Player History Scout</span>
           </button>
 
-          <button
-            onClick={() => setIsLoginModalOpen(true)}
-            className="flex items-center gap-2.5 px-3 py-1 rounded-xl bg-slate-950 border border-slate-800 hover:border-cyan-500/60 transition-all text-left group shadow-sm"
-            title="Click to Switch User Profile (Coach, Fan, Player, Broadcast, Admin)"
+          <div
+            className="flex items-center gap-2.5 px-3 py-1 rounded-xl bg-slate-950 border border-slate-800 text-left"
+            title={`Signed in as ${currentUser.email}`}
           >
             <div
               className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-black shadow-sm"
@@ -372,18 +489,16 @@ export default function App() {
             </div>
             <div className="text-left">
               <div className="flex items-center gap-1.5 leading-none">
-                <span className="text-xs font-bold text-slate-200 group-hover:text-cyan-300 transition-colors">
-                  {currentUser.name}
-                </span>
+                <span className="text-xs font-bold text-slate-200">{currentUser.name}</span>
                 <span className="text-[9px] font-mono px-1.5 py-0.2 rounded font-extrabold uppercase bg-slate-800 text-cyan-400 border border-slate-700">
                   {currentUser.badge}
                 </span>
               </div>
               <span className="text-[10px] text-slate-500 block leading-tight mt-0.5">
-                Switch Role / Login →
+                {user.orgName} · {user.plan} plan
               </span>
             </div>
-          </button>
+          </div>
 
           <button
             onClick={() => setIsExportOpen(true)}
@@ -448,17 +563,19 @@ export default function App() {
             <Glasses className="w-3.5 h-3.5" />
             Spectacle / Fan (AR)
           </button>
-          <button
-            onClick={() => setActiveTab("admin")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono flex items-center gap-1.5 transition-all ${
-              activeTab === "admin"
-                ? "bg-emerald-600 text-white shadow-md shadow-emerald-900/40"
-                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
-            }`}
-          >
-            <Cpu className="w-3.5 h-3.5" />
-            Admin
-          </button>
+          {isWorkspaceAdmin && (
+            <button
+              onClick={() => setActiveTab("admin")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono flex items-center gap-1.5 transition-all ${
+                activeTab === "admin"
+                  ? "bg-emerald-600 text-white shadow-md shadow-emerald-900/40"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+              }`}
+            >
+              <Cpu className="w-3.5 h-3.5" />
+              Admin
+            </button>
+          )}
 
           <span className="h-4 w-px bg-slate-800 mx-1" />
 
@@ -514,17 +631,19 @@ export default function App() {
             <Brain className="w-3.5 h-3.5" />
             Tactical AI
           </button>
-          <button
-            onClick={() => setActiveTab("code")}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
-              activeTab === "code"
-                ? "bg-purple-600 text-white shadow-sm"
-                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
-            }`}
-          >
-            <Code className="w-3.5 h-3.5" />
-            Python Engine
-          </button>
+          {isWorkspaceAdmin && (
+            <button
+              onClick={() => setActiveTab("code")}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
+                activeTab === "code"
+                  ? "bg-purple-600 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+              }`}
+            >
+              <Code className="w-3.5 h-3.5" />
+              Python Engine
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -545,7 +664,10 @@ export default function App() {
                 <span className="text-[11px] font-mono text-slate-400 mr-1 flex items-center gap-1">
                   <Eye className="w-3.5 h-3.5 text-cyan-400" /> VIEW:
                 </span>
-                {(["split", "tactical", "broadcast", "spectacles"] as ViewMode[]).map((mode) => (
+                {(artefact && mode === "artefact"
+                  ? (["tactical"] as ViewMode[])
+                  : (["split", "tactical", "broadcast", "spectacles"] as ViewMode[])
+                ).map((mode) => (
                   <button
                     key={mode}
                     onClick={() => setViewMode(mode)}
@@ -704,59 +826,139 @@ export default function App() {
               )}
             </div>
 
-            {/* Interactive Timeline & Playback Controls Bar */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-4 shadow-md">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setIsPlaying(!isPlaying)}
-                  className="w-9 h-9 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white flex items-center justify-center transition-colors shadow-sm"
-                  title="Play / Pause"
-                >
-                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
-                </button>
-                <button
-                  onClick={() => setCurrentSec(4080)}
-                  className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
-                  title="Reset to 68:00"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                </button>
-                <span className="font-mono text-sm font-bold text-slate-100 ml-2">
-                  {formatTime(currentSec)}
-                </span>
-                <span className="text-xs font-mono text-slate-500">/ 90:00</span>
+            {/* Interactive timeline & replay controls */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 flex flex-col gap-3 shadow-md">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-slate-500">
+                    Replay source:
+                  </span>
+                  {artefact ? (
+                    <>
+                      <button
+                        onClick={activateArtefactMode}
+                        className={`px-2.5 py-1 rounded-md text-[11px] font-mono transition-colors ${
+                          mode === "artefact"
+                            ? "bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40"
+                            : "bg-slate-950 text-slate-400 border border-slate-800 hover:text-slate-200"
+                        }`}
+                      >
+                        Artefact · {artefact.meta.title}
+                      </button>
+                      <button
+                        onClick={() => setMode("demo")}
+                        className={`px-2.5 py-1 rounded-md text-[11px] font-mono transition-colors ${
+                          mode === "demo"
+                            ? "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40"
+                            : "bg-slate-950 text-slate-400 border border-slate-800 hover:text-slate-200"
+                        }`}
+                      >
+                        Demo dataset
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="px-2.5 py-1 rounded-md text-[11px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                        Demo dataset
+                      </span>
+                      <Link
+                        to="/app/library"
+                        className="px-2.5 py-1 rounded-md text-[11px] font-mono bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/20"
+                      >
+                        Load a match artefact →
+                      </Link>
+                    </>
+                  )}
+                </div>
+
+                {isArtefactMode && artefact && (
+                  <div className="flex flex-wrap items-center gap-3 text-[10px] font-mono text-slate-500">
+                    <span>
+                      {artefact.hasTimeline
+                        ? `${artefact.sampleRateHz ?? 4} Hz · ${artefact.timeline.length} tracked samples`
+                        : "No timeline samples in this artefact"}
+                    </span>
+                    {artefact.meta.competition && <span>{artefact.meta.competition}</span>}
+                    <Link to="/app/library" className="text-cyan-300 hover:text-cyan-200">
+                      Change match
+                    </Link>
+                  </div>
+                )}
               </div>
 
-              {/* Scrubber Slider */}
-              <div className="flex-1 max-w-xl mx-4 flex items-center gap-3">
-                <span className="text-[11px] font-mono text-slate-500">68:00</span>
-                <input
-                  type="range"
-                  min={4080}
-                  max={4200}
-                  step={0.5}
-                  value={currentSec}
-                  onChange={(e) => setCurrentSec(parseFloat(e.target.value))}
-                  className="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-full cursor-pointer"
-                />
-                <span className="text-[11px] font-mono text-slate-500">70:00</span>
-              </div>
+              {isArtefactMode && artefact && !artefact.hasTimeline && (
+                <p className="text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                  This artefact was exported without replay samples, so the board shows the final
+                  tracked snapshot. Re-export with the current engine to enable timeline replay.
+                </p>
+              )}
 
-              {/* Playback Speed Toggles */}
-              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
-                {[0.5, 1.0, 2.0].map((spd) => (
+              {isArtefactMode && artefact && artefact.notes.length > 0 && (
+                <ul className="text-[10px] font-mono text-slate-500 list-disc list-inside">
+                  {artefact.notes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
                   <button
-                    key={spd}
-                    onClick={() => setPlaybackSpeed(spd)}
-                    className={`px-2 py-0.5 rounded text-xs font-mono ${
-                      playbackSpeed === spd
-                        ? "bg-cyan-500/20 text-cyan-300 font-bold"
-                        : "text-slate-400 hover:text-slate-200"
-                    }`}
+                    onClick={() => (canReplay ? setIsPlaying(!isPlaying) : setIsPlaying(false))}
+                    disabled={mode === "artefact" && !canReplay}
+                    className="w-9 h-9 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white flex items-center justify-center transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                    title={canReplay ? "Play / Pause replay" : "Play / Pause"}
                   >
-                    {spd}x
+                    {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
                   </button>
-                ))}
+                  <button
+                    onClick={() => {
+                      setIsPlaying(false);
+                      setCurrentSec(isArtefactMode ? 0 : 4080);
+                    }}
+                    className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+                    title={isArtefactMode ? "Restart replay" : "Reset to 68:00"}
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                  </button>
+                  <span className="font-mono text-sm font-bold text-slate-100 ml-2">{clockLabel}</span>
+                  <span className="text-xs font-mono text-slate-500">/ {formatClock(replayDuration)}</span>
+                </div>
+
+                {/* Scrubber Slider */}
+                <div className="flex-1 max-w-xl mx-4 flex items-center gap-3">
+                  <span className="text-[11px] font-mono text-slate-500">
+                    {isArtefactMode ? "0:00" : "68:00"}
+                  </span>
+                  <input
+                    type="range"
+                    min={isArtefactMode ? 0 : 4080}
+                    max={isArtefactMode ? replayDuration : 4200}
+                    step={0.1}
+                    value={Math.min(currentSec, replayDuration)}
+                    onChange={(e) => setCurrentSec(parseFloat(e.target.value))}
+                    disabled={mode === "artefact" && !canReplay}
+                    className="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-full cursor-pointer disabled:opacity-40"
+                  />
+                  <span className="text-[11px] font-mono text-slate-500">{formatClock(replayDuration)}</span>
+                </div>
+
+                {/* Playback Speed Toggles */}
+                <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                  {[0.5, 1.0, 2.0].map((spd) => (
+                    <button
+                      key={spd}
+                      onClick={() => setPlaybackSpeed(spd)}
+                      className={`px-2 py-0.5 rounded text-xs font-mono ${
+                        playbackSpeed === spd
+                          ? "bg-cyan-500/20 text-cyan-300 font-bold"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      {spd}x
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -845,7 +1047,7 @@ export default function App() {
         )}
 
         {/* 5. System Administrator & CV Infrastructure Dashboard */}
-        {activeTab === "admin" && (
+        {activeTab === "admin" && isWorkspaceAdmin && (
           <AdminDashboard
             onRecalibrateHomography={() => {
               // Trigger calibration refresh
@@ -870,7 +1072,7 @@ export default function App() {
         )}
 
         {/* Secondary: Python Architecture Codebase & Automated Tests */}
-        {activeTab === "code" && <CodebaseExplorer />}
+        {activeTab === "code" && isWorkspaceAdmin && <CodebaseExplorer />}
 
         {/* Premier: Post-Match Pundits & Tactical Analysts Studio */}
         {activeTab === "post_match" && (
@@ -896,21 +1098,6 @@ export default function App() {
         ball={ball}
         events={events}
         stats={stats}
-      />
-
-      {/* User Login & Role Authenticated Profile Modal */}
-      <UserLoginModal
-        isOpen={isLoginModalOpen}
-        onClose={() => setIsLoginModalOpen(false)}
-        currentUser={currentUser}
-        onSelectUser={(user) => {
-          setCurrentUser(user);
-          setActiveTab(user.preferredDashboard as any);
-          if (user.role === "player" && user.shirtNumber) {
-            const p = players.find((pl) => pl.number === user.shirtNumber);
-            if (p) setSelectedPlayerId(p.id);
-          }
-        }}
       />
     </div>
   );

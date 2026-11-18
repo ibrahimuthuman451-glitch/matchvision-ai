@@ -282,7 +282,7 @@ export interface HeadToHeadMatchup {
 }
 
 // --- USER ROLE DASHBOARD INTERFACES ---
-export type UserRole = "broadcast" | "coach" | "player" | "fan" | "admin";
+export type UserRole = "broadcast" | "coach" | "player" | "fan" | "admin" | "analyst";
 
 export interface CoachDirective {
   id: string;

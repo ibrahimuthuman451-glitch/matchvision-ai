@@ -15,7 +15,7 @@ export const CodebaseExplorer: React.FC = () => {
   const [isRunningTests, setIsRunningTests] = useState<boolean>(false);
 
   useEffect(() => {
-    fetch("/api/python-modules")
+    fetch("/api/dev/python-modules")
       .then((res) => res.json())
       .then((data) => {
         if (data.modules && data.modules.length > 0) {
@@ -32,7 +32,7 @@ export const CodebaseExplorer: React.FC = () => {
     setIsRunningTests(true);
     setTestOutput("Running automated Python test suite (main.py --mode test)...\n");
     try {
-      const res = await fetch("/api/run-tests", { method: "POST" });
+      const res = await fetch("/api/dev/run-tests", { method: "POST" });
       const data = await res.json();
       setTestOutput(data.stdout + (data.stderr ? "\nSTDERR:\n" + data.stderr : ""));
     } catch (e: any) {

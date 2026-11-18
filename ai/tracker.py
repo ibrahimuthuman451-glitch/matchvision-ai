@@ -235,7 +235,8 @@ class PersistentPlayerTracker:
                 class_id=det.class_id,
                 class_name=det.class_name,
                 state=TrackState.TRACKED,
-                foot_point=det.foot_point
+                foot_point=det.foot_point,
+                appearance_embedding=getattr(det, "feature_crop", None)
             )
             self.next_id += 1
             self.tracked_players.append(new_track)
@@ -278,6 +279,10 @@ class PersistentPlayerTracker:
         track.confidence = det.confidence
         track.class_id = det.class_id
         track.class_name = det.class_name
+        # Preserve the latest torso crop so downstream jersey-colour clustering
+        # (TeamIdentifier) always has an appearance sample for this track.
+        if getattr(det, "feature_crop", None) is not None:
+            track.appearance_embedding = det.feature_crop
         track.time_since_update = 0
         track.hits += 1
         x1, y1, x2, y2 = det.box

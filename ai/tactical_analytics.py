@@ -131,7 +131,7 @@ class TacticalAnalyticsEngine:
             if getattr(p, "team_id", None) == team_id and getattr(p, "pitch_coords", None) is not None
         ]
 
-        team_name = "Team A (Arsenal)" if team_id == 0 else "Team B (Man City)"
+        team_name = "Team A" if team_id == 0 else "Team B"
         count = len(team_players)
 
         if count < 3:
@@ -146,8 +146,9 @@ class TacticalAnalyticsEngine:
                 centroid=(0.0, 0.0),
                 possession_pct=50.0,
                 xg_total=0.0,
-                field_tilt_pct=50.0,
-                ppda=9.4
+                # Field tilt and PPDA require a completed event feed; report 0 until available
+                field_tilt_pct=0.0,
+                ppda=0.0
             )
 
         xs = [p.pitch_coords[0] for p in team_players]
@@ -201,7 +202,7 @@ class TacticalAnalyticsEngine:
             compactness_m2=compactness,
             centroid=centroid,
             possession_pct=poss_pct,
-            xg_total=1.42 if team_id == 0 else 1.18,
-            field_tilt_pct=56.2 if team_id == 0 else 43.8,
-            ppda=8.7 if team_id == 0 else 11.2
+            xg_total=0.0,
+            field_tilt_pct=0.0,
+            ppda=0.0
         )

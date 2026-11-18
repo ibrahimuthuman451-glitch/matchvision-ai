@@ -4,7 +4,8 @@
 param (
     [string]$Mode = "test",
     [string]$Video = "sample_match.mp4",
-    [string]$Output = "tracked_match.mp4"
+    [string]$Output = "tracked_match.mp4",
+    [string]$ExportJson = "match.json"
 )
 
 Write-Host "=======================================================" -ForegroundColor Cyan
@@ -35,12 +36,16 @@ if ($Mode -eq "test") {
 }
 elseif ($Mode -eq "process") {
     Write-Host "[*] Processing match video: $Video -> $Output" -ForegroundColor Cyan
-    & $pythonCmd main.py --mode process --video $Video --output $Output
+    & $pythonCmd main.py --mode process --video $Video --output $Output --export-json $ExportJson
+}
+elseif ($Mode -eq "demo") {
+    Write-Host "[*] Running synthetic demo match and exporting artefact..." -ForegroundColor Cyan
+    & $pythonCmd main.py --mode demo --export-json "demo_match.json"
 }
 elseif ($Mode -eq "web") {
-    Write-Host "[*] Launching MatchVision Tactical Web Studio..." -ForegroundColor Cyan
+    Write-Host "[*] Launching MatchVision web workspace on http://localhost:3000 ..." -ForegroundColor Cyan
     npm run dev
 }
 else {
-    Write-Host "Usage: .\run_matchvision.ps1 -Mode [test|process|web] [-Video path.mp4]" -ForegroundColor Yellow
+    Write-Host "Usage: .\run_matchvision.ps1 -Mode [test|demo|process|web] [-Video path.mp4] [-ExportJson match.json]" -ForegroundColor Yellow
 }

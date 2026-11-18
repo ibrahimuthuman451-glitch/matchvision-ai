@@ -1,18 +1,50 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="bg-slate-950">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MatchVision AI — Real-Time Football Intelligence Engine</title>
-    <meta name="description" content="Next-generation computer-vision and tactical football intelligence engine with persistent player tracking, pitch homography calibration, automated match event detection, and live 2D tactical visualization." />
-    <meta property="og:title" content="MatchVision AI — Real-Time Football Intelligence Engine" />
-    <meta property="og:description" content="Next-generation computer-vision and tactical football intelligence engine with persistent player tracking, pitch homography calibration, automated match event detection, and live 2D tactical visualization." />
+    <meta name="theme-color" content="#020617" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+
+    <title>MatchVision AI — Football Tactical Intelligence Platform</title>
+    <meta
+      name="description"
+      content="MatchVision AI is a commercial web platform that turns football broadcast footage into pitch-calibrated player tracking, event detection and coaching-grade tactical analysis."
+    />
+    <meta property="og:title" content="MatchVision AI — Football Tactical Intelligence Platform" />
+    <meta
+      property="og:description"
+      content="Pitch-calibrated tracking, event detection and tactical reporting in one secure web workspace for analysts, coaches and broadcast teams."
+    />
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="MatchVision AI" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="MatchVision AI — Football Tactical Intelligence Platform" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "MatchVision AI",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web",
+        "description": "Football computer-vision and tactical intelligence workspace with pitch calibration, persistent tracking, event detection and match reporting.",
+        "offers": {
+          "@type": "Offer",
+          "price": "149",
+          "priceCurrency": "GBP"
+        }
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <div style="font-family: system-ui, sans-serif; padding: 2rem; color: #e2e8f0; background: #020617">
+        MatchVision AI is a web application and requires JavaScript. Enable JavaScript to continue.
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
