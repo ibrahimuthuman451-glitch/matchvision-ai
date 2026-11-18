@@ -1,0 +1,54 @@
+name: matchvision
+
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: ghcr.io/ibrahimuthuman451-glitch/matchvision-ai:latest
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_PATH: /data/matchvision.db
+      APP_URL: https://uthmaniy.co.com
+      # TLS terminates at Caddy, so cookies must be Secure and the proxy trusted
+      COOKIE_SECURE: "true"
+      TRUST_PROXY: "true"
+      ENABLE_CODE_EXPLORER: "false"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_TACTICAL_MODEL: ${GEMINI_TACTICAL_MODEL:-gemini-2.5-pro}
+      GEMINI_BROADCAST_MODEL: ${GEMINI_BROADCAST_MODEL:-gemini-2.5-flash}
+    volumes:
+      - matchvision-data:/data
+    expose:
+      - "3000"
+    ports:
+      # Loopback only, for health checks and server-side debugging
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      web:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    restart: unless-stopped
+
+volumes:
+  matchvision-data:
+  caddy-data:
+  caddy-config:

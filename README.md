@@ -98,7 +98,21 @@ submitted match context — the product never fabricates player names or scores.
 
 ## Deployment
 
-### Docker (recommended)
+### Production on uthmaniy.co.com (Docker + Caddy)
+
+```bash
+git clone https://github.com/ibrahimuthuman451-glitch/matchvision-ai.git /opt/matchvision
+cd /opt/matchvision/deploy
+cp .env.example .env && chmod 600 .env
+./deploy.sh
+```
+
+`deploy/docker-compose.prod.yml` runs the app on loopback only and fronts it with Caddy,
+which obtains and renews Let's Encrypt certificates for `uthmaniy.co.com` and redirects
+`www`. Cookies are Secure and the proxy is trusted in this profile. Full runbook, backups,
+firewall/DNS checklist and troubleshooting: [`deploy/README.md`](deploy/README.md).
+
+### Local / self-hosted Docker
 
 ```bash
 docker compose up -d --build
@@ -177,7 +191,7 @@ See `/security` in the running product for the customer-facing version.
 
 ---
 
-## Verification
+## Verification and CI/CD
 
 ```bash
 npx tsc --noEmit          # type safety
@@ -186,6 +200,11 @@ python main.py --mode test
 python main.py --mode demo --export-json demo_match.json
 curl -s localhost:3000/api/health
 ```
+
+`.github/workflows/publish.yml` runs the same checks on every push to `main`, builds and
+publishes `ghcr.io/ibrahimuthuman451-glitch/matchvision-ai` (latest + commit SHA), and can
+deploy over SSH when the `DEPLOY_*` secrets and `DEPLOY_ENABLED` variable are configured
+(see the deploy runbook).
 
 ## Known limitations
 
