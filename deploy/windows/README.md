@@ -16,6 +16,26 @@ You do not run the deployment on your laptop's CMD. You either:
 - **A.** run this one PowerShell script, which packages the app and deploys it to the server over SSH (recommended), or
 - **B.** SSH into the server and run the Linux commands there.
 
+## 0. Get the project onto your PC first
+
+The script lives *inside* the repository, so running it from `C:\Users\PC` fails with
+"The system cannot find the file specified". Download the code first:
+
+1. Open <https://github.com/ibrahimuthuman451-glitch/matchvision-ai> in your browser
+   (you are the owner, so the private repo is visible while signed in).
+2. Green **Code** button → **Download ZIP**.
+3. Right-click the downloaded ZIP → **Extract All…** → e.g. `C:\Users\PC\matchvision-ai-main`.
+4. Open that folder. Hold **Shift**, right-click an empty area → **Open PowerShell window here**.
+   (Or open PowerShell and run `cd "C:\Users\PC\matchvision-ai-main"`.)
+5. Confirm the script is there:
+
+```powershell
+dir .\deploy\windows
+```
+
+Use **PowerShell**, not CMD. Lines starting with `#` in the docs are comments — do not type them
+as commands.
+
 ## A. One-command deploy from Windows
 
 ### What you need

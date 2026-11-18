@@ -119,6 +119,12 @@ which obtains and renews Let's Encrypt certificates for `uthmaniy.co.com` and re
 `www`. Cookies are Secure and the proxy is trusted in this profile. Full runbook, backups,
 firewall/DNS checklist and troubleshooting: [`deploy/README.md`](deploy/README.md).
 
+### No server access? Render blueprint
+
+`render.yaml` deploys the Docker image with a persistent `/data` disk and health checks.
+Create a Blueprint in Render from this repository, add the custom domain, and point the
+`uthmaniy.co.com` DNS record at Render (details in [`deploy/README.md`](deploy/README.md#7b-deploy-without-a-server-render-blueprint)).
+
 ### Local / self-hosted Docker
 
 ```bash

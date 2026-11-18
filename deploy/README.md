@@ -134,6 +134,23 @@ Restore by stopping the stack, replacing `/data/matchvision.db` in the volume, a
 | `502` from Caddy | App container unhealthy | `docker compose logs web`; confirm `/api/health` on 127.0.0.1:3000 |
 | Port 3000 exposed publicly | Override removed the loopback bind | Re-publish as `127.0.0.1:3000:3000`, never `3000:3000` |
 
+## 7b. Deploy without a server (Render blueprint)
+
+If you cannot obtain SSH access to `169.60.151.233`, deploy the same Docker image to Render and
+point the domain there. This needs only GitHub + DNS access, no server shell.
+
+1. Render dashboard → **New → Blueprint** → connect `ibrahimuthuman451-glitch/matchvision-ai`.
+2. Apply `render.yaml` (Docker runtime, `/data` disk, health check `/api/health`).
+3. Optionally add `GEMINI_API_KEY` in the service's Environment tab.
+4. Service → **Settings → Custom Domains** → add `uthmaniy.co.com` and `www.uthmaniy.co.com`.
+5. At your DNS provider, replace the current `A 169.60.151.233` with the target Render shows
+   (apex: Render's IP/ALIAS; `www`: CNAME to the service hostname).
+6. Wait for Render to issue the certificate, then check `https://uthmaniy.co.com/api/health`.
+
+Notes: the persistent disk requires a paid instance type (Starter or higher); without a disk
+the SQLite database is reset on every deploy. Keep the service at one instance — SQLite and
+in-memory sessions are per-instance.
+
 ## 8. Security notes
 
 - The app container is never published beyond loopback; only Caddy is internet-facing.

@@ -1,0 +1,30 @@
+# One-click Docker deployment without server/SSH access.
+# Render dashboard -> New -> Blueprint -> connect this repository.
+services:
+  - type: web
+    name: matchvision-ai
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_PATH
+        value: /data/matchvision.db
+      - key: APP_URL
+        value: https://uthmaniy.co.com
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: TRUST_PROXY
+        value: "true"
+      - key: ENABLE_CODE_EXPLORER
+        value: "false"
+      - key: GEMINI_API_KEY
+        sync: false
+    disk:
+      name: matchvision-data
+      mountPath: /data
+      sizeGB: 1
