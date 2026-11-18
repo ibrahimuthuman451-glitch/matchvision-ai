@@ -20,9 +20,24 @@ sudo usermod -aG docker "$USER"   # re-login afterwards
 
 ## 2. First deployment
 
+### From Windows (recommended)
+
+The repository is **private**, so the server cannot clone it anonymously. The Windows script
+packages the app, uploads it over SSH and bootstraps the deployment without any GitHub login
+on the server:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\deploy\windows\deploy-from-windows.ps1 -SshUser root
+```
+
+See [`windows/README.md`](windows/README.md) for prerequisites, key-based auth and troubleshooting.
+
+### On the server (if you already have the code there)
+
 ```bash
+# Private repo: use a PAT or deploy key, or upload the archive from the Windows script
 sudo mkdir -p /opt/matchvision && sudo chown "$USER" /opt/matchvision
-git clone https://github.com/ibrahimuthuman451-glitch/matchvision-ai.git /opt/matchvision
+git clone https://<PAT>@github.com/ibrahimuthuman451-glitch/matchvision-ai.git /opt/matchvision
 cd /opt/matchvision/deploy
 cp .env.example .env && chmod 600 .env     # add GEMINI_API_KEY if you want generative AI
 ./deploy.sh

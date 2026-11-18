@@ -100,8 +100,15 @@ submitted match context — the product never fabricates player names or scores.
 
 ### Production on uthmaniy.co.com (Docker + Caddy)
 
+Deploy from Windows (packages the private repo, uploads over SSH, no GitHub login on the server):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\deploy\windows\deploy-from-windows.ps1 -SshUser root
+```
+
+Or, on the server with the code already present:
+
 ```bash
-git clone https://github.com/ibrahimuthuman451-glitch/matchvision-ai.git /opt/matchvision
 cd /opt/matchvision/deploy
 cp .env.example .env && chmod 600 .env
 ./deploy.sh
